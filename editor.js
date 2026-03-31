@@ -6,6 +6,8 @@ function escapeHtml(str) {
 
 // ── 전역 상태 ──────────────────────────────────
 let products = [], currentProduct = null, selectedImageUrl = null;
+let currentProductIndex = 0;
+let editedResults = []; // { product, dataUrl } 편집 완료된 상품들
 let editHistory = [], isCropping = false, cropStart = null, cropEnd = null, isDrawing = false;
 
 const canvas = document.getElementById('mainCanvas');
@@ -49,6 +51,7 @@ function renderProducts() {
       </div>`;
     card.addEventListener('click', () => {
       currentProduct = p;
+      currentProductIndex = i;
       document.querySelectorAll('.product-card').forEach(c => c.classList.remove('active'));
       card.classList.add('active');
     });
@@ -57,8 +60,10 @@ function renderProducts() {
 }
 
 document.getElementById('goDetailBtn').addEventListener('click', () => {
-  if (!currentProduct && products.length > 0) currentProduct = products[0];
+  if (!currentProduct && products.length > 0) { currentProduct = products[0]; currentProductIndex = 0; }
   if (!currentProduct) return;
+  editedResults = [];
+  selectedImageUrl = null;
   loadDetailImages(currentProduct);
   goPage(2);
 });
@@ -67,6 +72,11 @@ document.getElementById('goDetailBtn').addEventListener('click', () => {
 function loadDetailImages(product) {
   document.getElementById('detailProductInfo').innerHTML =
     '<b>' + escapeHtml(product.name) + '</b><br>prod_id: ' + escapeHtml(product.prodId || '없음');
+  // 진행 상태 표시
+  const progressEl = document.getElementById('progressInfo');
+  if (progressEl && products.length > 1) {
+    progressEl.textContent = '(' + (currentProductIndex + 1) + '/' + products.length + ')';
+  }
 
   const area = document.getElementById('detailImageArea');
   area.innerHTML = '<div style="color:#888;font-size:13px;text-align:center;padding:30px">상세설명 이미지 불러오는 중...</div>';
@@ -275,76 +285,185 @@ function cancelCropEdit(){
 
 document.getElementById('doneBtn').addEventListener('click', () => {
   commitFilters();
-  document.getElementById('compareOriginal').src = currentProduct ? currentProduct.imgUrl : '';
-  const nc = document.getElementById('compareNew');
-  nc.width = canvas.width; nc.height = canvas.height;
-  nc.getContext('2d').drawImage(canvas,0,0);
-  // canvas 표시 크기 조정
-  nc.style.width = '100%';
-  nc.style.height = 'auto';
-  goPage(4);
-});
 
-// ── 4단계: 저장 ────────────────────────────────
-document.getElementById('backEditBtn').addEventListener('click', () => goPage(3));
-
-document.getElementById('savePngBtn').addEventListener('click', () => {
-  commitFilters();
-  try {
-    const a=document.createElement('a');
-    a.download=(currentProduct?currentProduct.name.slice(0,20):'편집이미지')+'_edited.png';
-    a.href=canvas.toDataURL('image/png');a.click();
-  } catch (e) {
-    alert('이미지를 내보낼 수 없습니다. (보안 제한)\n다른 이미지를 선택해주세요.');
-  }
-});
-
-document.getElementById('uploadShopling').addEventListener('click', () => {
-  if (!currentProduct?.prodId) {
-    document.getElementById('saveStatus').textContent = '❌ prod_id가 없습니다.';
-    return;
-  }
-  commitFilters();
-  const status = document.getElementById('saveStatus');
-  status.textContent = '⏳ 이미지 저장 중...';
-  status.style.color = '#fbbf24';
-
+  // 현재 상품의 편집 결과를 저장
   let dataUrl;
   try {
     dataUrl = canvas.toDataURL('image/jpeg', 0.92);
   } catch (e) {
-    status.textContent = '❌ 이미지를 내보낼 수 없습니다. (보안 제한)';
+    document.getElementById('statusBar').textContent = '이미지를 내보낼 수 없습니다. (보안 제한)';
+    return;
+  }
+
+  // 이미 편집된 상품이면 교체, 아니면 추가
+  const existIdx = editedResults.findIndex(r => r.product === currentProduct);
+  if (existIdx >= 0) {
+    editedResults[existIdx].dataUrl = dataUrl;
+  } else {
+    editedResults.push({ product: currentProduct, dataUrl });
+  }
+
+  // 다음 상품이 있으면 자동으로 다음 상품 편집으로 이동
+  const nextIndex = currentProductIndex + 1;
+  if (nextIndex < products.length) {
+    currentProductIndex = nextIndex;
+    currentProduct = products[nextIndex];
+    selectedImageUrl = null;
+    // 상품 카드 active 상태 업데이트
+    document.querySelectorAll('.product-card').forEach((c, i) => {
+      c.classList.toggle('active', i === nextIndex);
+    });
+    loadDetailImages(currentProduct);
+    goPage(2);
+    document.getElementById('statusBar').textContent =
+      '(' + (nextIndex + 1) + '/' + products.length + ') 다음 상품: ' + currentProduct.name;
+  } else {
+    // 모든 상품 편집 완료 → 4단계(저장) 페이지로 이동
+    renderSavePage();
+    goPage(4);
+  }
+});
+
+// ── 4단계: 저장 ────────────────────────────────
+const SERVER_URL = 'http://localhost:5000';
+
+document.getElementById('backEditBtn').addEventListener('click', () => goPage(3));
+
+function renderSavePage() {
+  const list = document.getElementById('editedProductList');
+  list.innerHTML = '';
+  document.getElementById('saveCompleteCount').textContent = '총 ' + editedResults.length + '개 편집 완료';
+
+  editedResults.forEach((r, i) => {
+    const item = document.createElement('div');
+    item.className = 'edited-item';
+    item.id = 'edited-item-' + i;
+
+    const img = document.createElement('img');
+    img.src = r.dataUrl;
+
+    const info = document.createElement('div');
+    info.className = 'item-info';
+    info.innerHTML = '<div class="item-name">' + escapeHtml(r.product.name) + '</div>'
+      + '<div class="item-pid">prod_id: ' + escapeHtml(r.product.prodId || '없음') + '</div>';
+
+    const status = document.createElement('div');
+    status.className = 'item-status';
+    status.id = 'item-status-' + i;
+    status.style.color = '#2563eb';
+    status.textContent = '대기 중';
+
+    item.appendChild(img);
+    item.appendChild(info);
+    item.appendChild(status);
+    list.appendChild(item);
+  });
+
+  // 서버 연결 상태 확인
+  checkServerConnection();
+}
+
+function checkServerConnection() {
+  const status = document.getElementById('saveStatus');
+  fetch(SERVER_URL + '/ping', { method: 'GET', signal: AbortSignal.timeout(3000) })
+    .then(r => r.ok ? r.json() : Promise.reject('서버 응답 오류'))
+    .then(() => {
+      status.textContent = '✅ 서버 연결됨 — 업로드 준비 완료';
+      status.style.color = '#22c55e';
+      document.getElementById('serverInfo').style.display = 'none';
+    })
+    .catch(() => {
+      status.textContent = '❌ 서버 연결 실패 — shopling_server.py 를 먼저 실행해주세요';
+      status.style.color = '#f87171';
+      document.getElementById('serverInfo').style.display = '';
+    });
+}
+
+document.getElementById('uploadShopling').addEventListener('click', async () => {
+  if (editedResults.length === 0) return;
+
+  const status = document.getElementById('saveStatus');
+
+  // 먼저 서버 연결 확인
+  try {
+    await fetch(SERVER_URL + '/ping', { method: 'GET', signal: AbortSignal.timeout(3000) });
+  } catch (e) {
+    status.textContent = '❌ 서버 연결 실패 — shopling_server.py 를 먼저 실행해주세요';
     status.style.color = '#f87171';
     return;
   }
 
-  chrome.storage.local.get(['shoplingApi'], (r) => {
-    if (chrome.runtime.lastError) {
-      status.textContent = '❌ 설정을 불러올 수 없습니다: ' + chrome.runtime.lastError.message;
-      status.style.color = '#f87171';
-      return;
+  status.textContent = '⏳ 업로드 중...';
+  status.style.color = '#fbbf24';
+
+  let successCount = 0;
+  for (let i = 0; i < editedResults.length; i++) {
+    const r = editedResults[i];
+    const itemStatus = document.getElementById('item-status-' + i);
+
+    if (!r.product.prodId) {
+      itemStatus.textContent = '건너뜀';
+      itemStatus.style.color = '#888';
+      continue;
     }
-    const folderName = r.shoplingApi?.folderName || 'shopling_images';
-    chrome.runtime.sendMessage({
-      action: 'downloadAndQueue',
-      prodId: currentProduct.prodId,
-      imageDataUrl: dataUrl,
-      folderName: folderName
-    }, res => {
-      if (chrome.runtime.lastError) {
-        status.textContent = '❌ ' + chrome.runtime.lastError.message;
-        status.style.color = '#f87171';
-        return;
-      }
-      if (res?.success) {
-        status.textContent = '✅ 저장 완료! 총 ' + res.count + '개 대기 중. upload_shopling.py 실행하면 자동 업로드됩니다.';
-        status.style.color = '#22c55e';
+
+    itemStatus.textContent = '업로드 중...';
+    itemStatus.style.color = '#fbbf24';
+
+    try {
+      // 로컬 다운로드 + 큐 생성
+      await new Promise((resolve, reject) => {
+        chrome.storage.local.get(['shoplingApi'], (sr) => {
+          const folderName = sr.shoplingApi?.folderName || 'shopling_images';
+          chrome.runtime.sendMessage({
+            action: 'downloadAndQueue',
+            prodId: r.product.prodId,
+            imageDataUrl: r.dataUrl,
+            folderName: folderName
+          }, res => {
+            if (res?.success) resolve(res);
+            else reject(new Error(res?.error || '다운로드 실패'));
+          });
+        });
+      });
+
+      // 서버에 업로드 요청
+      const resp = await fetch(SERVER_URL + '/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prodId: r.product.prodId,
+          imageDataUrl: r.dataUrl,
+          productName: r.product.name
+        }),
+        signal: AbortSignal.timeout(30000)
+      });
+
+      if (resp.ok) {
+        itemStatus.textContent = '완료';
+        itemStatus.style.color = '#22c55e';
+        successCount++;
       } else {
-        status.textContent = '❌ ' + (res?.error || '저장 실패');
-        status.style.color = '#f87171';
+        const err = await resp.text();
+        itemStatus.textContent = '실패';
+        itemStatus.style.color = '#f87171';
       }
-    });
-  });
+    } catch (e) {
+      itemStatus.textContent = '실패';
+      itemStatus.style.color = '#f87171';
+    }
+  }
+
+  if (successCount === editedResults.length) {
+    status.textContent = '✅ 전체 ' + successCount + '개 업로드 완료!';
+    status.style.color = '#22c55e';
+  } else if (successCount > 0) {
+    status.textContent = '⚠️ ' + successCount + '/' + editedResults.length + '개 업로드 완료 (일부 실패)';
+    status.style.color = '#fbbf24';
+  } else {
+    status.textContent = '❌ 업로드 실패. 서버 상태를 확인해주세요.';
+    status.style.color = '#f87171';
+  }
 });
 
 window.addEventListener('resize', () => { if(canvas.width) adjustScale(); });

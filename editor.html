@@ -61,6 +61,12 @@ canvas { display: block; }
 .compare-box img, .compare-box canvas { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; background: #222; }
 .save-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .save-status { text-align: center; font-size: 13px; padding: 10px; border-radius: 8px; background: var(--bg1); border: 1px solid var(--border); }
+.edited-item { display: flex; align-items: center; gap: 12px; background: var(--bg1); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+.edited-item img { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; background: #333; flex-shrink: 0; }
+.edited-item .item-info { flex: 1; min-width: 0; }
+.edited-item .item-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.edited-item .item-pid { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.edited-item .item-status { font-size: 12px; font-weight: bold; flex-shrink: 0; }
 
 /* 공통 */
 .btn { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-size: 13px; cursor: pointer; font-family: inherit; white-space: nowrap; }
@@ -167,6 +173,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); }
       <div style="flex:1"></div>
       <button class="btn sm" id="undoBtn">↩ 되돌리기</button>
       <span id="sizeInfo" style="font-size:11px;color:var(--muted);margin:0 8px"></span>
+      <span id="progressInfo" style="font-size:11px;color:#fbbf24;margin:0 4px"></span>
       <button class="btn sm green" id="doneBtn">✓ 편집 완료 →</button>
     </div>
     <div class="canvas-area">
@@ -181,22 +188,19 @@ input[type=range] { flex: 1; accent-color: var(--accent); }
 
 <!-- 4단계: 저장 -->
 <div class="page" id="page-save">
-  <div class="compare-grid">
-    <div class="compare-box">
-      <div class="label">🔵 기존 대표이미지</div>
-      <img id="compareOriginal" src="" alt="">
-    </div>
-    <div class="compare-box">
-      <div class="label">🟢 새 이미지 (편집 결과)</div>
-      <canvas id="compareNew"></canvas>
-    </div>
+  <div id="saveCompleteHeader" style="text-align:center;padding:16px">
+    <div style="font-size:18px;font-weight:bold">✅ 편집 완료</div>
+    <div id="saveCompleteCount" style="font-size:13px;color:var(--muted);margin-top:4px">총 0개 편집 완료</div>
   </div>
-  <div class="save-actions">
-    <button class="btn" id="backEditBtn">← 다시 편집</button>
-    <button class="btn blue" id="savePngBtn">💾 PNG 다운로드</button>
-    <button class="btn green" id="uploadShopling">🚀 샵플링 대표이미지 업로드</button>
+  <div id="editedProductList" style="max-width:700px;margin:0 auto;width:100%"></div>
+  <div class="save-actions" style="margin-top:16px">
+    <button class="btn" id="backEditBtn">← 편집으로</button>
+    <button class="btn green" id="uploadShopling" style="font-size:14px;padding:10px 24px">🚀 샵플링 업로드 시작</button>
   </div>
-  <div class="save-status" id="saveStatus">업로드 버튼을 클릭하면 샵플링에 자동으로 저장됩니다.</div>
+  <div class="save-status" id="saveStatus"></div>
+  <div id="serverInfo" style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px">
+    업로드하려면 <b style="color:#f87171">shopling_server.py</b> 가 실행 중이어야 합니다
+  </div>
 </div>
 
 <script src="editor.js"></script>
