@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>이미지수정</title>
+<style>
+:root {
+  --bg1: #1e1e2e; --bg2: #2a2a3e; --bg3: #13131f;
+  --border: #3b3b52; --text: #e0e0e0; --muted: #888;
+  --accent: #2563eb; --green: #16a34a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Malgun Gothic',sans-serif; background: var(--bg3); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+.nav { background: var(--bg1); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; height: 48px; gap: 8px; flex-shrink: 0; }
+.nav-title { font-size: 15px; font-weight: bold; color: white; margin-right: 8px; }
+.nav-tab { padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--muted); border: none; background: transparent; font-family: inherit; }
+.nav-tab.active { background: var(--accent); color: white; }
+
+.page { display: none; flex: 1; overflow: hidden; }
+.page.active { display: flex; }
+
+/* ── 1단계: 상품선택 ── */
+#page-products { flex-direction: column; }
+.product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; padding: 16px; overflow-y: auto; flex: 1; }
+.product-card { background: var(--bg1); border: 2px solid var(--border); border-radius: 10px; cursor: pointer; overflow: hidden; }
+.product-card:hover, .product-card.active { border-color: var(--accent); background: #1a2a4a; }
+.product-card img { width: 100%; aspect-ratio: 1; object-fit: cover; background: #333; }
+.product-card .info { padding: 8px; }
+.product-card .name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-card .pid { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.page-footer { background: var(--bg1); border-top: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+/* ── 2단계: 상세설명 보기 + 캡처 ── */
+#page-detail { flex-direction: row; }
+.detail-left { width: 220px; background: var(--bg1); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 12px; gap: 8px; flex-shrink: 0; }
+.detail-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.detail-toolbar { background: var(--bg1); border-bottom: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.iframe-wrap { flex: 1; position: relative; overflow: hidden; }
+.iframe-wrap iframe { width: 100%; height: 100%; border: none; background: white; }
+/* 캡처 오버레이 */
+.capture-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: crosshair; display: none; }
+.capture-overlay.active { display: block; }
+.capture-box { position: absolute; border: 2px solid #22c55e; background: rgba(34,197,94,0.1); pointer-events: none; }
+
+/* ── 3단계: 편집 ── */
+#page-edit { flex-direction: row; }
+.edit-sidebar { width: 220px; background: var(--bg1); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+.edit-main { flex: 1; display: flex; flex-direction: column; }
+.edit-toolbar { background: var(--bg1); border-bottom: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+.canvas-area { flex: 1; display: flex; align-items: center; justify-content: center; background: var(--bg3); padding: 16px; overflow: hidden; }
+.canvas-wrap { position: relative; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+canvas { display: block; }
+.status-bar { font-size: 11px; color: var(--muted); padding: 4px 12px; border-top: 1px solid var(--border); background: var(--bg1); }
+
+/* ── 4단계: 저장 ── */
+#page-save { flex-direction: column; padding: 20px; overflow-y: auto; gap: 16px; }
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.compare-box { background: var(--bg1); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.compare-box .label { padding: 8px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.compare-box img, .compare-box canvas { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; background: #222; }
+.save-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.save-status { text-align: center; font-size: 13px; padding: 10px; border-radius: 8px; background: var(--bg1); border: 1px solid var(--border); }
+
+/* 공통 */
+.btn { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-size: 13px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.btn:hover { background: #333350; }
+.btn.blue { background: var(--accent); color: white; border-color: var(--accent); }
+.btn.green { background: var(--green); color: white; border-color: var(--green); }
+.btn.red { background: #dc2626; color: white; border-color: #dc2626; }
+.btn.sm { padding: 5px 10px; font-size: 12px; }
+.section { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.section-title { font-size: 10px; font-weight: bold; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.slider-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.slider-label { font-size: 11px; color: var(--muted); width: 36px; flex-shrink: 0; }
+.slider-val { font-size: 11px; font-weight: bold; color: #60a5fa; width: 28px; text-align: right; flex-shrink: 0; }
+input[type=range] { flex: 1; accent-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <span class="nav-title">🖼 이미지수정</span>
+  <button class="nav-tab active" id="tab1">① 상품 선택</button>
+  <button class="nav-tab" id="tab2">② 상세설명 캡처</button>
+  <button class="nav-tab" id="tab3">③ 편집</button>
+  <button class="nav-tab" id="tab4">④ 저장</button>
+</div>
+
+<!-- 1단계: 상품 선택 -->
+<div class="page active" id="page-products">
+  <div class="product-grid" id="productGrid">
+    <div style="grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;color:var(--muted);gap:12px" id="noProducts">
+      <div style="font-size:40px">📦</div>
+      <p>샵플링 A4에서 상품을 선택해주세요</p>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span id="listCount" style="font-size:13px;color:var(--muted)">상품 없음</span>
+    <div style="flex:1"></div>
+    <button class="btn blue" id="goDetailBtn">다음: 상세설명 보기 →</button>
+  </div>
+</div>
+
+<!-- 2단계: 상세설명 캡처 -->
+<div class="page" id="page-detail">
+  <div class="detail-left">
+    <div style="font-size:12px;color:var(--muted);font-weight:bold;margin-bottom:4px">선택된 상품</div>
+    <div id="detailProductInfo" style="font-size:11px;line-height:1.6;color:var(--text)"></div>
+    <hr style="border-color:var(--border);margin:4px 0">
+    <div style="font-size:11px;color:#fbbf24;line-height:1.7">
+      📌 <b>사용법</b><br>
+      ① 오른쪽 상세설명에서<br>
+      원하는 이미지 확인<br>
+      ② <b>캡처 시작</b> 클릭<br>
+      ③ 드래그로 영역 선택<br>
+      ④ <b>캡처 완료</b> 클릭
+    </div>
+    <hr style="border-color:var(--border);margin:4px 0">
+    <button class="btn blue" id="startCaptureBtn">📷 캡처 시작</button>
+    <button class="btn green" id="confirmCaptureBtn" style="display:none">✓ 캡처 완료</button>
+    <button class="btn" id="cancelCaptureBtn" style="display:none">✕ 취소</button>
+    <div id="captureStatus" style="font-size:11px;color:var(--muted);text-align:center"></div>
+  </div>
+  <div class="detail-main" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:8px 16px;background:var(--bg1);border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)" id="detailUrl"></div>
+    <div id="detailImageArea" style="flex:1;overflow-y:auto;padding:16px;background:var(--bg3)"></div>
+  </div>
+</div>
+
+<!-- 3단계: 편집 -->
+<div class="page" id="page-edit">
+  <div class="edit-sidebar">
+    <div class="section">
+      <div class="section-title">사이즈 프리셋</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+        <button class="btn sm" data-w="800" data-h="800" data-w="800" data-h="800">스마트스토어<br><small>800×800</small></button>
+        <button class="btn sm" data-w="1000" data-h="1000" data-w="1000" data-h="1000">쿠팡<br><small>1000×1000</small></button>
+        <button class="btn sm" data-w="1200" data-h="1200" data-w="1200" data-h="1200">오픈마켓<br><small>1200×1200</small></button>
+        <button class="btn sm" data-w="720" data-h="720" data-w="720" data-h="720">모바일<br><small>720×720</small></button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">밝기 / 대비 / 채도</div>
+      <div class="slider-row"><span class="slider-label">밝기</span><input type="range" id="brightness" min="-100" max="100" value="0"><span class="slider-val" id="brightnessVal">0</span></div>
+      <div class="slider-row"><span class="slider-label">대비</span><input type="range" id="contrast" min="-100" max="100" value="0"><span class="slider-val" id="contrastVal">0</span></div>
+      <div class="slider-row"><span class="slider-label">채도</span><input type="range" id="saturation" min="-100" max="100" value="0"><span class="slider-val" id="saturationVal">0</span></div>
+      <div style="display:flex;gap:4px">
+        <button class="btn sm" id="commitFilterBtn" style="flex:1">✓ 적용</button>
+        <button class="btn sm" id="resetFilterBtn" style="flex:1">초기화</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">변환</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="btn sm" id="rotLBtn">↺ 좌</button>
+        <button class="btn sm" id="rotRBtn">↻ 우</button>
+        <button class="btn sm" id="flipHBtn">⇄ 반전</button>
+      </div>
+    </div>
+  </div>
+  <div class="edit-main">
+    <div class="edit-toolbar">
+      <button class="btn sm" id="cropBtn">✂ 자르기</button>
+      <button class="btn sm green" id="cropConfirm" style="display:none">✓ 적용</button>
+      <button class="btn sm" id="cropCancel" style="display:none">✕ 취소</button>
+      <div style="flex:1"></div>
+      <button class="btn sm" id="undoBtn">↩ 되돌리기</button>
+      <span id="sizeInfo" style="font-size:11px;color:var(--muted);margin:0 8px"></span>
+      <button class="btn sm green" id="doneBtn">✓ 편집 완료 →</button>
+    </div>
+    <div class="canvas-area">
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="mainCanvas"></canvas>
+        <canvas id="cropCanvas" style="position:absolute;top:0;left:0;display:none;cursor:crosshair"></canvas>
+      </div>
+    </div>
+    <div class="status-bar" id="statusBar">이미지 편집 중</div>
+  </div>
+</div>
+
+<!-- 4단계: 저장 -->
+<div class="page" id="page-save">
+  <div class="compare-grid">
+    <div class="compare-box">
+      <div class="label">🔵 기존 대표이미지</div>
+      <img id="compareOriginal" src="" alt="">
+    </div>
+    <div class="compare-box">
+      <div class="label">🟢 새 이미지 (편집 결과)</div>
+      <canvas id="compareNew"></canvas>
+    </div>
+  </div>
+  <div class="save-actions">
+    <button class="btn" id="backEditBtn">← 다시 편집</button>
+    <button class="btn blue" id="savePngBtn">💾 PNG 다운로드</button>
+    <button class="btn green" id="uploadShopling">🚀 샵플링 대표이미지 업로드</button>
+  </div>
+  <div class="save-status" id="saveStatus">업로드 버튼을 클릭하면 샵플링에 자동으로 저장됩니다.</div>
+</div>
+
+<script src="editor.js"></script>
+</body>
+</html>

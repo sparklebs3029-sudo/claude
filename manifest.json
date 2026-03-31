@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "이미지수정 - 샵플링 연동",
+  "version": "1.4",
+  "description": "샵플링 A4에서 상품 이미지를 선택하여 편집합니다",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "downloads"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://a.shopling.co.kr/prod/webedit.phtml*"
+      ],
+      "js": [
+        "webedit_reader.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "editor.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
