@@ -1,3 +1,9 @@
+// ── 유틸 ────────────────────────────────────────
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // ── 전역 상태 ──────────────────────────────────
 let products = [], currentProduct = null, selectedImageUrl = null;
 let editHistory = [], isCropping = false, cropStart = null, cropEnd = null, isDrawing = false;
@@ -36,10 +42,10 @@ function renderProducts() {
   products.forEach((p, i) => {
     const card = document.createElement('div');
     card.className = 'product-card' + (i === 0 ? ' active' : '');
-    card.innerHTML = `<img src="${p.imgUrl}" onerror="this.style.background='#333'">
+    card.innerHTML = `<img src="${escapeHtml(p.imgUrl)}" onerror="this.style.background='#333'">
       <div class="info">
-        <div class="name">${p.name}</div>
-        <div class="pid">${p.prodId || ''}  ${p.prodId ? '✓' : '✗ prod_id 없음'}</div>
+        <div class="name">${escapeHtml(p.name)}</div>
+        <div class="pid">${escapeHtml(p.prodId || '')}  ${p.prodId ? '✓' : '✗ prod_id 없음'}</div>
       </div>`;
     card.addEventListener('click', () => {
       currentProduct = p;
@@ -60,7 +66,7 @@ document.getElementById('goDetailBtn').addEventListener('click', () => {
 // ── 2단계: 상세설명 이미지 ─────────────────────
 function loadDetailImages(product) {
   document.getElementById('detailProductInfo').innerHTML =
-    '<b>' + product.name + '</b><br>prod_id: ' + (product.prodId || '없음');
+    '<b>' + escapeHtml(product.name) + '</b><br>prod_id: ' + escapeHtml(product.prodId || '없음');
 
   const area = document.getElementById('detailImageArea');
   area.innerHTML = '<div style="color:#888;font-size:13px;text-align:center;padding:30px">상세설명 이미지 불러오는 중...</div>';
@@ -125,10 +131,16 @@ function loadImageToCanvas(url, autoCrop = false) {
   img.crossOrigin = 'anonymous';
   img.onload = () => { initCanvas(img); if (autoCrop) setTimeout(startCrop, 300); };
   img.onerror = () => {
-    // crossOrigin 없이 재시도 (CORS 없는 외부 이미지)
-    const img2 = new Image();
-    img2.onload = () => { initCanvas(img2); if (autoCrop) setTimeout(startCrop, 300); };
-    img2.src = url + '?t=' + Date.now();
+    // CORS fallback: background service worker를 통해 이미지를 dataURL로 변환
+    chrome.runtime.sendMessage({ action: 'fetchImageAsDataUrl', url }, (res) => {
+      if (res?.success) {
+        const img2 = new Image();
+        img2.onload = () => { initCanvas(img2); if (autoCrop) setTimeout(startCrop, 300); };
+        img2.src = res.dataUrl;
+      } else {
+        document.getElementById('statusBar').textContent = '이미지를 불러올 수 없습니다: ' + (res?.error || 'CORS 차단');
+      }
+    });
   };
   img.src = url;
 }
@@ -278,9 +290,13 @@ document.getElementById('backEditBtn').addEventListener('click', () => goPage(3)
 
 document.getElementById('savePngBtn').addEventListener('click', () => {
   commitFilters();
-  const a=document.createElement('a');
-  a.download=(currentProduct?currentProduct.name.slice(0,20):'편집이미지')+'_edited.png';
-  a.href=canvas.toDataURL('image/png');a.click();
+  try {
+    const a=document.createElement('a');
+    a.download=(currentProduct?currentProduct.name.slice(0,20):'편집이미지')+'_edited.png';
+    a.href=canvas.toDataURL('image/png');a.click();
+  } catch (e) {
+    alert('이미지를 내보낼 수 없습니다. (보안 제한)\n다른 이미지를 선택해주세요.');
+  }
 });
 
 document.getElementById('uploadShopling').addEventListener('click', () => {
@@ -293,14 +309,33 @@ document.getElementById('uploadShopling').addEventListener('click', () => {
   status.textContent = '⏳ 이미지 저장 중...';
   status.style.color = '#fbbf24';
 
+  let dataUrl;
+  try {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  } catch (e) {
+    status.textContent = '❌ 이미지를 내보낼 수 없습니다. (보안 제한)';
+    status.style.color = '#f87171';
+    return;
+  }
+
   chrome.storage.local.get(['shoplingApi'], (r) => {
+    if (chrome.runtime.lastError) {
+      status.textContent = '❌ 설정을 불러올 수 없습니다: ' + chrome.runtime.lastError.message;
+      status.style.color = '#f87171';
+      return;
+    }
     const folderName = r.shoplingApi?.folderName || 'shopling_images';
     chrome.runtime.sendMessage({
       action: 'downloadAndQueue',
       prodId: currentProduct.prodId,
-      imageDataUrl: canvas.toDataURL('image/jpeg', 0.92),
+      imageDataUrl: dataUrl,
       folderName: folderName
     }, res => {
+      if (chrome.runtime.lastError) {
+        status.textContent = '❌ ' + chrome.runtime.lastError.message;
+        status.style.color = '#f87171';
+        return;
+      }
       if (res?.success) {
         status.textContent = '✅ 저장 완료! 총 ' + res.count + '개 대기 중. upload_shopling.py 실행하면 자동 업로드됩니다.';
         status.style.color = '#22c55e';

@@ -26,10 +26,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('runOnPage').addEventListener('click', () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs || !tabs[0]) return;
+      const tab = tabs[0];
+      if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('about:')) {
+        alert('이 페이지에서는 실행할 수 없습니다.\n샵플링 A4 페이지에서 실행해주세요.');
+        return;
+      }
       chrome.scripting.executeScript({
-        target: { tabId: tabs[0].id, allFrames: true },
+        target: { tabId: tab.id, allFrames: true },
         files: ['content.js']
-      }, () => { window.close(); });
+      }, () => {
+        if (chrome.runtime.lastError) {
+          alert('스크립트 실행 실패: ' + chrome.runtime.lastError.message);
+          return;
+        }
+        window.close();
+      });
     });
   });
 

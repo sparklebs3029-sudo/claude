@@ -9,25 +9,58 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.action === 'fetchDetailImages') {
     const prodId = msg.prodId;
+    if (!prodId || !/^\d{5,6}$/.test(prodId)) {
+      sendResponse({ success: false, error: 'Invalid prod_id' });
+      return true;
+    }
     const url = 'https://a.shopling.co.kr/prod/prodInfo.phtml?mode=modify&opt_mode=modify&popup=Y&prod_id=' + prodId;
-    fetch(url, { credentials: 'include' })
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    fetch(url, { credentials: 'include', signal: controller.signal })
       .then(r => r.text())
       .then(html => {
-        const m = html.match(/name=["']dtl_desc["'][^>]*>([\s\S]*?)<\/textarea>/i);
-        let detailHtml = m ? m[1] : '';
-        detailHtml = detailHtml
-          .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
-        const imgUrls = [];
-        const re = /<img[^>]+src=["']([^"']+)["']/gi;
-        let m2;
-        while ((m2 = re.exec(detailHtml)) !== null) {
-          let src = m2[1].trim();
-          if (!src.startsWith('http')) src = 'https:' + src;
-          if (!imgUrls.includes(src)) imgUrls.push(src);
+        clearTimeout(timeoutId);
+        try {
+          const m = html.match(/name=["']dtl_desc["'][^>]*>([\s\S]*?)<\/textarea>/i);
+          let detailHtml = m ? m[1] : '';
+          detailHtml = detailHtml
+            .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&');
+          const imgUrls = [];
+          const re = /<img[^>]+src\s*=\s*(?:['"]([^'"]*?)['"]|([^\s>]+))/gi;
+          let m2;
+          while ((m2 = re.exec(detailHtml)) !== null) {
+            let src = (m2[1] || m2[2] || '').trim();
+            if (!src) continue;
+            if (!src.startsWith('http')) src = 'https:' + src;
+            if (!imgUrls.includes(src)) imgUrls.push(src);
+          }
+          sendResponse({ success: true, imgUrls });
+        } catch (parseErr) {
+          sendResponse({ success: false, error: 'Parse error: ' + parseErr.message });
         }
-        sendResponse({ success: true, imgUrls });
       })
-      .catch(err => sendResponse({ success: false, error: err.message }));
+      .catch(err => {
+        clearTimeout(timeoutId);
+        sendResponse({ success: false, error: err.name === 'AbortError' ? 'Request timed out' : err.message });
+      });
+    return true;
+  }
+
+  if (msg.action === 'fetchImageAsDataUrl') {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    fetch(msg.url, { signal: controller.signal })
+      .then(r => r.blob())
+      .then(blob => {
+        clearTimeout(timeoutId);
+        const reader = new FileReader();
+        reader.onloadend = () => sendResponse({ success: true, dataUrl: reader.result });
+        reader.readAsDataURL(blob);
+      })
+      .catch(err => {
+        clearTimeout(timeoutId);
+        sendResponse({ success: false, error: err.message });
+      });
     return true;
   }
 

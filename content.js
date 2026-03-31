@@ -46,6 +46,13 @@
   `;
   document.body.appendChild(panel);
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   let selectedProducts = [], panelOpen = false;
 
   btn.addEventListener('click', () => {
@@ -123,11 +130,13 @@
 
         const info = document.createElement('div');
         info.style.cssText = 'flex:1;overflow:hidden;min-width:0';
+        const safeName = escapeHtml(p.name);
+        const safeProdId = escapeHtml(p.prodId || '');
         const badge = p.prodId
-          ? '<span style="color:#22c55e;font-size:10px">✓ prod_id: ' + p.prodId + '</span>'
+          ? '<span style="color:#22c55e;font-size:10px">✓ prod_id: ' + safeProdId + '</span>'
           : '<span style="color:#f87171;font-size:10px">✗ prod_id 없음</span>';
         info.innerHTML = `
-          <div style="color:#e0e0e0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+          <div style="color:#e0e0e0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${safeName}</div>
           <div style="margin-top:2px">${badge}</div>
         `;
 
@@ -137,7 +146,7 @@
 
         chk.addEventListener('change', () => {
           if (chk.checked) { selectedProducts.push(p); item.style.borderColor = '#2563eb'; }
-          else { selectedProducts = selectedProducts.filter(s => s.imgUrl !== p.imgUrl); item.style.borderColor = '#3b3b52'; }
+          else { selectedProducts = selectedProducts.filter(s => s !== p); item.style.borderColor = '#3b3b52'; }
           updateCount();
         });
         item.addEventListener('click', (e) => { if (e.target !== chk) chk.click(); });
