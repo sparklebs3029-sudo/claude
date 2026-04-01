@@ -9,7 +9,6 @@
     return;
   }
 
-  // ── 플로팅 버튼 ──────────────────────────────
   const btn = document.createElement('div');
   btn.id = 'img-editor-btn';
   btn.textContent = '🖼 이미지수정';
@@ -23,7 +22,6 @@
   });
   document.body.appendChild(btn);
 
-  // ── 패널 ─────────────────────────────────────
   const panel = document.createElement('div');
   panel.id = 'img-editor-panel';
   Object.assign(panel.style, {
@@ -46,6 +44,13 @@
   `;
   document.body.appendChild(panel);
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   let selectedProducts = [], panelOpen = false;
 
   btn.addEventListener('click', () => {
@@ -59,7 +64,6 @@
   panel.querySelector('#imgep-scan').addEventListener('click', scan);
   panel.querySelector('#imgep-edit').addEventListener('click', openEditor);
 
-  // ── 스캔 ─────────────────────────────────────
   function scan() {
     const list = panel.querySelector('#imgep-list');
     list.innerHTML = '<div style="color:#888;font-size:12px;text-align:center;padding:10px">스캔 중...</div>';
@@ -71,25 +75,19 @@
       const seen = new Set();
 
       document.querySelectorAll('table tr').forEach((row) => {
-        // 샵플링 상품 이미지만 허용
         const img = row.querySelector('img[src*="img.shopling.co.kr/prodImg/"]');
         if (!img) return;
         const src = img.src;
         if (seen.has(src)) return;
         seen.add(src);
 
-        // 상품명
         let name = '상품 ' + (results.length + 1);
         const a = row.querySelector('a');
         if (a && a.textContent.trim().length > 2) name = a.textContent.trim().slice(0, 50);
 
-        // 샵플링상품코드 = prod_id
-        // A4 테이블 첫 번째 컬럼: 샵플링상품코드(위) / 자사상품코드(중) / 모델명(아래)
-        // 샵플링상품코드는 5~6자리 순수 숫자
         let prodId = '';
         const tds = row.querySelectorAll('td');
         tds.forEach(td => {
-          // 셀 안에 여러 줄이 있을 수 있으므로 줄 단위로 쪼개서 확인
           const lines = td.innerText.split('\n').map(l => l.trim());
           lines.forEach(line => {
             if (/^\d{5,6}$/.test(line) && !prodId) prodId = line;
@@ -123,11 +121,13 @@
 
         const info = document.createElement('div');
         info.style.cssText = 'flex:1;overflow:hidden;min-width:0';
+        const safeName = escapeHtml(p.name);
+        const safeProdId = escapeHtml(p.prodId || '');
         const badge = p.prodId
-          ? '<span style="color:#22c55e;font-size:10px">✓ prod_id: ' + p.prodId + '</span>'
+          ? '<span style="color:#22c55e;font-size:10px">✓ prod_id: ' + safeProdId + '</span>'
           : '<span style="color:#f87171;font-size:10px">✗ prod_id 없음</span>';
         info.innerHTML = `
-          <div style="color:#e0e0e0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+          <div style="color:#e0e0e0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${safeName}</div>
           <div style="margin-top:2px">${badge}</div>
         `;
 
@@ -137,7 +137,7 @@
 
         chk.addEventListener('change', () => {
           if (chk.checked) { selectedProducts.push(p); item.style.borderColor = '#2563eb'; }
-          else { selectedProducts = selectedProducts.filter(s => s.imgUrl !== p.imgUrl); item.style.borderColor = '#3b3b52'; }
+          else { selectedProducts = selectedProducts.filter(s => s !== p); item.style.borderColor = '#3b3b52'; }
           updateCount();
         });
         item.addEventListener('click', (e) => { if (e.target !== chk) chk.click(); });
