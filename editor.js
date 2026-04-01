@@ -325,8 +325,6 @@ document.getElementById('doneBtn').addEventListener('click', () => {
 });
 
 // ── 4단계: 저장 ────────────────────────────────
-const SERVER_URL = 'http://localhost:5000';
-
 document.getElementById('backEditBtn').addEventListener('click', () => goPage(3));
 
 function renderSavePage() {
@@ -359,111 +357,90 @@ function renderSavePage() {
     list.appendChild(item);
   });
 
-  // 서버 연결 상태 확인
   checkServerConnection();
 }
 
 function checkServerConnection() {
   const status = document.getElementById('saveStatus');
-  fetch(SERVER_URL + '/ping', { method: 'GET', signal: AbortSignal.timeout(3000) })
-    .then(r => r.ok ? r.json() : Promise.reject('서버 응답 오류'))
-    .then(() => {
+  chrome.runtime.sendMessage({ action: 'pingServer' }, (res) => {
+    if (res?.ok) {
       status.textContent = '✅ 서버 연결됨 — 업로드 준비 완료';
       status.style.color = '#22c55e';
       document.getElementById('serverInfo').style.display = 'none';
-    })
-    .catch(() => {
+    } else {
       status.textContent = '❌ 서버 연결 실패 — shopling_server.py 를 먼저 실행해주세요';
       status.style.color = '#f87171';
       document.getElementById('serverInfo').style.display = '';
-    });
+    }
+  });
 }
 
-document.getElementById('uploadShopling').addEventListener('click', async () => {
+document.getElementById('uploadShopling').addEventListener('click', () => {
   if (editedResults.length === 0) return;
 
   const status = document.getElementById('saveStatus');
 
-  // 먼저 서버 연결 확인
-  try {
-    await fetch(SERVER_URL + '/ping', { method: 'GET', signal: AbortSignal.timeout(3000) });
-  } catch (e) {
-    status.textContent = '❌ 서버 연결 실패 — shopling_server.py 를 먼저 실행해주세요';
-    status.style.color = '#f87171';
-    return;
-  }
-
-  status.textContent = '⏳ 업로드 중...';
-  status.style.color = '#fbbf24';
-
-  let successCount = 0;
-  for (let i = 0; i < editedResults.length; i++) {
-    const r = editedResults[i];
-    const itemStatus = document.getElementById('item-status-' + i);
-
-    if (!r.product.prodId) {
-      itemStatus.textContent = '건너뜀';
-      itemStatus.style.color = '#888';
-      continue;
+  // 서버 연결 확인 후 업로드
+  chrome.runtime.sendMessage({ action: 'pingServer' }, (pingRes) => {
+    if (!pingRes?.ok) {
+      status.textContent = '❌ 서버 연결 실패 — shopling_server.py 를 먼저 실행해주세요';
+      status.style.color = '#f87171';
+      return;
     }
 
-    itemStatus.textContent = '업로드 중...';
-    itemStatus.style.color = '#fbbf24';
-
-    try {
-      // 로컬 다운로드 + 큐 생성
-      await new Promise((resolve, reject) => {
-        chrome.storage.local.get(['shoplingApi'], (sr) => {
-          const folderName = sr.shoplingApi?.folderName || 'shopling_images';
-          chrome.runtime.sendMessage({
-            action: 'downloadAndQueue',
-            prodId: r.product.prodId,
-            imageDataUrl: r.dataUrl,
-            folderName: folderName
-          }, res => {
-            if (res?.success) resolve(res);
-            else reject(new Error(res?.error || '다운로드 실패'));
-          });
-        });
-      });
-
-      // 서버에 업로드 요청
-      const resp = await fetch(SERVER_URL + '/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prodId: r.product.prodId,
-          imageDataUrl: r.dataUrl,
-          productName: r.product.name
-        }),
-        signal: AbortSignal.timeout(30000)
-      });
-
-      if (resp.ok) {
-        itemStatus.textContent = '완료';
-        itemStatus.style.color = '#22c55e';
-        successCount++;
-      } else {
-        const err = await resp.text();
-        itemStatus.textContent = '실패';
-        itemStatus.style.color = '#f87171';
-      }
-    } catch (e) {
-      itemStatus.textContent = '실패';
-      itemStatus.style.color = '#f87171';
-    }
-  }
-
-  if (successCount === editedResults.length) {
-    status.textContent = '✅ 전체 ' + successCount + '개 업로드 완료!';
-    status.style.color = '#22c55e';
-  } else if (successCount > 0) {
-    status.textContent = '⚠️ ' + successCount + '/' + editedResults.length + '개 업로드 완료 (일부 실패)';
+    status.textContent = '⏳ 업로드 중...';
     status.style.color = '#fbbf24';
-  } else {
-    status.textContent = '❌ 업로드 실패. 서버 상태를 확인해주세요.';
-    status.style.color = '#f87171';
-  }
+
+    let completed = 0, successCount = 0;
+    const total = editedResults.length;
+
+    editedResults.forEach((r, i) => {
+      const itemStatus = document.getElementById('item-status-' + i);
+
+      if (!r.product.prodId) {
+        itemStatus.textContent = '건너뜀';
+        itemStatus.style.color = '#888';
+        completed++;
+        if (completed === total) showFinalStatus(successCount, total, status);
+        return;
+      }
+
+      itemStatus.textContent = '업로드 중...';
+      itemStatus.style.color = '#fbbf24';
+
+      // background를 통해 서버에 업로드
+      chrome.runtime.sendMessage({
+        action: 'uploadToServer',
+        prodId: r.product.prodId,
+        imageDataUrl: r.dataUrl,
+        productName: r.product.name
+      }, (uploadRes) => {
+        if (uploadRes?.ok) {
+          itemStatus.textContent = '완료';
+          itemStatus.style.color = '#22c55e';
+          successCount++;
+        } else {
+          itemStatus.textContent = '실패';
+          itemStatus.style.color = '#f87171';
+        }
+        completed++;
+        if (completed === total) showFinalStatus(successCount, total, status);
+      });
+    });
+  });
 });
+
+function showFinalStatus(successCount, total, statusEl) {
+  if (successCount === total) {
+    statusEl.textContent = '✅ 전체 ' + successCount + '개 업로드 완료!';
+    statusEl.style.color = '#22c55e';
+  } else if (successCount > 0) {
+    statusEl.textContent = '⚠️ ' + successCount + '/' + total + '개 업로드 완료 (일부 실패)';
+    statusEl.style.color = '#fbbf24';
+  } else {
+    statusEl.textContent = '❌ 업로드 실패. 서버 상태를 확인해주세요.';
+    statusEl.style.color = '#f87171';
+  }
+}
 
 window.addEventListener('resize', () => { if(canvas.width) adjustScale(); });

@@ -1,5 +1,7 @@
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
+  const SERVER_URL = 'http://127.0.0.1:5000';
+
   if (msg.action === 'openEditorWithData') {
     chrome.storage.local.set({ shoplingProducts: msg.products }, () => {
       chrome.tabs.create({ url: chrome.runtime.getURL('editor.html') });
@@ -61,6 +63,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         clearTimeout(timeoutId);
         sendResponse({ success: false, error: err.message });
       });
+    return true;
+  }
+
+  // ── 서버 프록시 (extension page → background → localhost) ──
+  if (msg.action === 'pingServer') {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 3000);
+    fetch(SERVER_URL + '/ping', { signal: controller.signal })
+      .then(r => r.json())
+      .then(data => { clearTimeout(tid); sendResponse({ ok: true, data }); })
+      .catch(() => { clearTimeout(tid); sendResponse({ ok: false }); });
+    return true;
+  }
+
+  if (msg.action === 'uploadToServer') {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 30000);
+    fetch(SERVER_URL + '/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prodId: msg.prodId,
+        imageDataUrl: msg.imageDataUrl,
+        productName: msg.productName
+      }),
+      signal: controller.signal
+    })
+      .then(r => r.ok ? r.json() : Promise.reject('server error'))
+      .then(data => { clearTimeout(tid); sendResponse({ ok: true, data }); })
+      .catch(err => { clearTimeout(tid); sendResponse({ ok: false, error: String(err) }); });
     return true;
   }
 
